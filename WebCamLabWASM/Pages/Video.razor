@@ -1,0 +1,119 @@
+﻿@page "/video"
+@using System.IO
+@using ZXing
+@using System.Drawing;
+@using ZXing.Common
+@inject IJSRuntime JsRuntime
+@implements IAsyncDisposable
+<h3>Video</h3>
+<video @ref="VideoHTMLElement">
+    kein Video
+</video>
+
+<button @onclick="makefoto" class="btn">foto</button>
+<img src="@bild" />
+<hr />
+<h1>@FrameCount</h1>
+baercode @barcode
+@code {
+
+
+
+    Task<IJSObjectReference> moduleTask;
+
+    public ElementReference VideoHTMLElement { get; set; }
+
+
+    static int FrameCount = 0;
+
+    static string bild;
+    static string barcode;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            RefreshUI += () => StateHasChanged();
+
+            moduleTask = JsRuntime.InvokeAsync<IJSObjectReference>("import",
+        "./js/camhelper.js").AsTask();
+            var module = await moduleTask;
+
+            await module.InvokeVoidAsync("initialize", VideoHTMLElement, DotNetObjectReference.Create(this));
+
+            var test = await module.InvokeAsync<bool>("Test", VideoHTMLElement
+                );
+
+        }
+    }
+
+    [JSInvokable]
+    public void OnWebCamLive()
+    {
+
+
+    }
+
+    [JSInvokable]
+    public void OnWebCameraError(string error)
+    {
+
+
+
+    }
+
+
+    private static Action RefreshUI;
+
+
+
+    [JSInvokable]
+    public static async Task OnFrameArrived(string _bild)
+    {
+        FrameCount++;
+        bild = _bild; //QRCode todo
+        var s = _bild.Split(",");
+        byte[] imgBytes = Convert.FromBase64String(s[1]);
+
+        var stream = new MemoryStream(imgBytes);
+
+
+
+        var barcodeBitmap = new System.DrawingCore.Bitmap(stream);
+        var reader = new ZXing.ZKWeb.BarcodeReader();
+        var result = reader.Decode(barcodeBitmap);
+        //var bitmap = new Bitmap(stream);
+        //LuminanceSource source;
+        //source = new BitmapLuminanceSource(bitmap);
+        //BinaryBitmap b = new BinaryBitmap(new HybridBinarizer(source));
+        //Result result = new MultiFormatReader().decode(b);
+        if (result != null)
+        { barcode = result.Text; }
+
+        RefreshUI?.Invoke();
+
+
+    }
+    void Dummy()
+    {
+        FrameCount++;
+        StateHasChanged();
+    }
+    public async void makefoto()
+    {
+        var module = await moduleTask;
+        bild = await module.InvokeAsync<string>("getBase64Img", VideoHTMLElement);
+        StateHasChanged();
+    }
+    // @implements IAsyncDisposable
+
+    public async ValueTask DisposeAsync()
+    {
+        if (moduleTask != null)
+        {
+            var module = await moduleTask;
+            await module.DisposeAsync();
+        }
+    }
+}
+//https://swimburger.net/blog/dotnet/interacting-with-javascript-objects-using-the-new-ijsobjectreference-in-blazor
